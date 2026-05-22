@@ -19,6 +19,12 @@ type Config struct {
 	RedisPassword string
 	RedisDB       int
 
+	DatabaseHost     string
+	DatabaseName     string
+	DatabasePort     string
+	DatabaseUser     string
+	DatabasePassword string
+
 	lock sync.Mutex
 }
 
@@ -44,6 +50,13 @@ func NewConfig() *Config {
 		RedisUser:     os.Getenv("REDIS_USER"),
 		RedisPassword: os.Getenv("REDIS_PASSWORD"),
 		RedisDB:       redisDb,
-		lock:          sync.Mutex{},
+
+		DatabaseHost:     os.Getenv("DATABASE_HOST"),
+		DatabaseName:     os.Getenv("DATABASE_NAME"),
+		DatabasePort:     os.Getenv("DATABASE_PORT"),
+		DatabaseUser:     os.Getenv("DATABASE_USER"),
+		DatabasePassword: os.Getenv("DATABASE_PASSWORD"),
+
+		lock: sync.Mutex{},
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	pb "github.com/mosteligible/mcp-codemode/agent-proto/pb"
+	"github.com/mosteligible/mcp-codemode/coderunner/config"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -35,6 +36,40 @@ func NewWorkerClient(address string) (*WorkerClient, error) {
 type WorkerConnections struct {
 	Connections      map[string]*WorkerClient
 	sessionToHostMap map[string]string
+	redisClient      *redis.Client
+	redisDb          int
+}
+
+func NewWorkerConnections(conf *config.Config, redisDb int) *WorkerConnections {
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: conf.RedisHost + ":" + conf.RedisPort,
+		DB:   redisDb,
+	})
+	return &WorkerConnections{
+		redisClient: redisClient,
+		redisDb:     redisDb,
+	}
+}
+
+func (wc *WorkerConnections) SetupSessionToWorker(ctx context.Context, sessionId string) {
+	result := wc.redisClient.HGetAll(ctx, "available:workers")
+	if result.Err() != nil {
+		slog.Warn("failed to get available workers from redis", "error", result.Err())
+		return
+	}
+	// Process the result to set up the session to worker mapping
+}
+
+func (wc *WorkerConnections) GetWorkerForSession(ctx context.Context, sessionId string) *WorkerClient {
+	// check if worker is associated with the session already
+	res := wc.redisClient.Get(ctx, sessionId)
+	if res.Err() != nil {
+		slog.Warn("failed to get worker for session from redis", "sessionId", sessionId, "error", res.Err())
+	}
+
+	wc.SetupSessionToWorker(ctx, sessionId)
+
+	return nil
 }
 
 func (wc *WorkerConnections) GetClientForHost(host string) (*WorkerClient, bool) {
