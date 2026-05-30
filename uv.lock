@@ -1433,6 +1433,7 @@ dependencies = [
     { name = "mcp-codemode-client" },
     { name = "mcp-codemode-server" },
     { name = "pre-commit" },
+    { name = "redis" },
 ]
 
 [package.dev-dependencies]
@@ -1446,6 +1447,7 @@ requires-dist = [
     { name = "mcp-codemode-client", editable = "client" },
     { name = "mcp-codemode-server", editable = "pyrunner" },
     { name = "pre-commit", specifier = ">=4.5.1" },
+    { name = "redis", specifier = ">=7.2.1" },
 ]
 
 [package.metadata.requires-dev]
