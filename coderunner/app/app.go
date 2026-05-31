@@ -1,10 +1,10 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -23,37 +23,36 @@ import (
 )
 
 type App struct {
-	wrapper         http.Handler
-	port            string
-	appConfig       *config.Config
-	redisClient     *redis.Client
-	requestClient   *http.Client
-	grpcConnections map[string]*workerclient.WorkerClient
+	wrapper       http.Handler
+	port          string
+	appConfig     *config.Config
+	redisClient   *redis.Client
+	requestClient *http.Client
+	workerClients *workerclient.WorkerConnections
 }
 
 func NewApp(port string) *App {
 	conf := config.NewConfig()
 	redisOpts := &redis.Options{
-		Addr: "localhost:6379",
-		DB:   0,
+		Addr: conf.RedisHost + ":" + conf.RedisPort,
+		DB:   conf.RedisDB,
+	}
+	if conf.RedisUser != "" {
+		redisOpts.Username = conf.RedisUser
 	}
 	if conf.RedisPassword != "" {
 		redisOpts.Password = conf.RedisPassword
 	}
 	slog.Info("starting redis client")
 	redisClient := redis.NewClient(redisOpts)
-
-	grpcConnections := make(map[string]*workerclient.WorkerClient)
-	slog.Info("remote hosts: " + strings.Join(conf.RemoteHosts, ", "))
-	for _, host := range conf.RemoteHosts {
-		conn, err := workerclient.NewWorkerClient(host)
-		if err != nil {
-			slog.Error("could not connect to worker at:" + host)
-			continue
-		}
-		slog.Info("connected to host: " + host)
-		grpcConnections[host] = conn
+	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer redisCancel()
+	if err := redisClient.Ping(redisCtx).Err(); err != nil {
+		slog.Error("could not connect to redis", "addr", redisOpts.Addr, "error", err.Error())
 	}
+
+	slog.Info("remote hosts: " + strings.Join(conf.RemoteHosts, ", "))
+	workerClients := workerclient.NewWorkerConnections(conf, redisClient)
 
 	app := &App{
 		port:        port,
@@ -63,7 +62,7 @@ func NewApp(port string) *App {
 			Timeout:   180 * time.Second,
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
-		grpcConnections: grpcConnections,
+		workerClients: workerClients,
 	}
 
 	app.init()
@@ -93,17 +92,15 @@ func (a *App) Start() error {
 	)
 }
 
-func (a *App) getGrpcConnection() (*workerclient.WorkerClient, error) {
-	if len(a.grpcConnections) == 0 {
+func (a *App) getGrpcConnection(ctx context.Context, sessionId string) (*workerclient.WorkerClient, error) {
+	if a.workerClients == nil {
 		return nil, fmt.Errorf("no available worker connections")
 	}
-	randIndex := rand.Intn(len(a.grpcConnections))
-	conn := a.grpcConnections[a.appConfig.RemoteHosts[randIndex]]
-	return conn, nil
+	return a.workerClients.GetWorker(ctx, sessionId)
 }
 
 func (a *App) status(w http.ResponseWriter, r *http.Request) {
-	res, err := a.getGrpcConnection()
+	res, err := a.getGrpcConnection(r.Context(), "")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "no available worker connections"})
@@ -131,7 +128,7 @@ func (a *App) RunCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := a.getGrpcConnection()
+	conn, err := a.getGrpcConnection(r.Context(), codeRequest.SessionId)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

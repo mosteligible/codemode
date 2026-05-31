@@ -8,6 +8,8 @@ import (
 type Config struct {
 	DockerApiVersion             string
 	DockerImageName              string
+	WorkerHost                   string
+	WorkerAddress                string
 	WorkerPort                   string
 	MinActiveContainers          int
 	MaxActiveContainers          int
@@ -21,11 +23,25 @@ type Config struct {
 }
 
 func NewConfig() *Config {
+	workerHost := common.GetEnvironmentVariable("WORKER_HOST", "localhost")
+	if workerHost == "" {
+		workerHost = "localhost"
+	}
+	workerPort := common.GetEnvironmentVariable("WORKER_PORT", constants.DefaultWorkerPort)
+	if workerPort == "" {
+		workerPort = constants.DefaultWorkerPort
+	}
+	workerAddress := common.GetEnvironmentVariable("WORKER_ADDRESS", "")
+	if workerAddress == "" {
+		workerAddress = normalizeWorkerAddress(workerHost, workerPort)
+	}
 
 	return &Config{
 		DockerApiVersion:             common.GetEnvironmentVariable("DOCKER_API_VERSION", constants.DefaultDockerApiVersion),
 		DockerImageName:              common.GetEnvironmentVariable("DOCKER_IMAGE_NAME", constants.DefaultDockerImageName),
-		WorkerPort:                   common.GetEnvironmentVariable("WORKER_PORT", constants.DefaultWorkerPort),
+		WorkerHost:                   workerHost,
+		WorkerAddress:                workerAddress,
+		WorkerPort:                   workerPort,
 		MinActiveContainers:          common.GetEnvironmentVariable("MIN_ACTIVE_CONTAINERS", constants.DefaultMinActive),
 		MaxActiveContainers:          common.GetEnvironmentVariable("MAX_ACTIVE_CONTAINERS", constants.DefaultMaxActive),
 		ActiveContainerCheckInterval: common.GetEnvironmentVariable("ACTIVE_CONTAINER_CHECK_INTERVAL", constants.DefaultContainerCheckInterval),
@@ -35,4 +51,14 @@ func NewConfig() *Config {
 		RedisPassword:                common.GetEnvironmentVariable("REDIS_PASSWORD", ""),
 		RedisDb:                      common.GetEnvironmentVariable("REDIS_DB", 0),
 	}
+}
+
+func normalizeWorkerAddress(host, port string) string {
+	if port == "" {
+		return host
+	}
+	if port[0] == ':' {
+		return host + port
+	}
+	return host + ":" + port
 }

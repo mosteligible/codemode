@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/mosteligible/mcp-codemode/agent-proto/pb"
 	"github.com/mosteligible/mcp-codemode/agent/config"
@@ -45,6 +46,12 @@ func main() {
 		redisOpts.Password = conf.RedisPassword
 	}
 	redisClient := redis.NewClient(redisOpts)
+	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer redisCancel()
+	if err := redisClient.Ping(redisCtx).Err(); err != nil {
+		log.Fatalf("could not connect to redis at %s:%s: %v", conf.RedisHost, conf.RedisPort, err)
+	}
+	defer redisClient.Close()
 
 	shutdownSignal := make(chan struct{})
 	gserver := server.NewServer(shutdownSignal, redisClient)

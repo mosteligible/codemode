@@ -230,5 +230,13 @@ func (cs *ContainerState) CleanupIdleContainers(containerClient *client.Client, 
 }
 
 func (cs *ContainerState) GetMaxSlots() int {
-	return cs.maxActiveContainers - cs.Containers.Count()
+	return cs.maxActiveContainers
+}
+
+func (cs *ContainerState) GetAvailableSlots() int {
+	availableSlots := cs.maxActiveContainers - cs.Containers.Count()
+	if availableSlots < 0 {
+		return 0
+	}
+	return availableSlots
 }

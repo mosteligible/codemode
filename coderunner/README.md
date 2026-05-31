@@ -13,8 +13,8 @@ At startup, Coderunner:
 
 - initializes OpenTelemetry tracing
 - loads configuration from environment variables and `.env`
-- creates gRPC clients for each host in `REMOTE_HOSTS`
-- connects to Redis for proxy token lookup
+- creates optional fallback gRPC clients for each host in `REMOTE_HOSTS`
+- connects to Redis for worker discovery, session routing, and proxy token lookup
 - registers MCP tools for GitHub
 
 ## HTTP API
@@ -46,7 +46,7 @@ Notes:
 
 - `code` is required and must be non-empty after trimming.
 - `language` is forwarded as-is to the worker.
-- `sessionId` is optional.
+- `sessionId` is optional. When provided, Coderunner stores a sticky `sessionId -> worker` mapping in Redis and reuses that worker for later requests in the same session.
 
 ### `GET /status`
 
@@ -103,7 +103,8 @@ In the current app flow:
 
 - `/run` uses `ExecuteCode`
 - `/status` uses `Status`
-- worker selection is random across configured `REMOTE_HOSTS`
+- worker selection reads live worker state from Redis and prefers the worker with the most available slots, then lower CPU and memory usage
+- `REMOTE_HOSTS` is an optional static fallback when Redis does not have a live worker entry
 
 ## Configuration
 
@@ -119,10 +120,15 @@ Recognized variables:
 - `REDIS_PASSWORD`
 - `REDIS_DB`
 
-Important current-state caveat:
+By default, Redis points at `localhost:6379`, DB `0`, with no password.
 
-- The Redis client in `app.NewApp()` is currently hardcoded to `localhost:6379` and DB `0`.
-- Of the Redis env vars above, only `REDIS_PASSWORD` is actually applied when creating the client.
+Redis control-plane keys:
+
+- `codemode:workers:available`: set of live worker addresses
+- `codemode:worker:capacity:<worker>`: JSON capacity and load snapshot for one worker
+- `codemode:workers:capacity`: hash mirror of worker capacity snapshots for inspection
+- `codemode:session:worker:<sessionId>`: sticky session assignment
+- `codemode:worker:sessions:<worker>`: worker-to-session index used for cleanup
 
 Telemetry uses the standard OpenTelemetry OTLP HTTP exporter configuration from the Go SDK defaults and environment.
 

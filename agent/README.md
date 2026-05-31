@@ -1,6 +1,6 @@
 # MCP Codemode Agent
 
-The MCP Codemode Agent is a lightweight gRPC service that keeps a warm pool of Docker containers available for code execution. It is intended to run as a background host service on Linux.
+The MCP Codemode Agent is a lightweight gRPC service that keeps a warm pool of Docker containers available for code execution. It also publishes worker heartbeat and capacity state to Redis so Coderunner can route requests to live workers.
 
 ## Production Installation
 
@@ -58,8 +58,16 @@ Supported settings:
 - `DOCKER_API_VERSION` default: `1.40`
 - `DOCKER_IMAGE_NAME` default: `python:3.14-slim`
 - `WORKER_PORT` default: `:30031`
+- `WORKER_HOST` default: `localhost`
+- `WORKER_ADDRESS` default: `WORKER_HOST + WORKER_PORT`
 - `MIN_ACTIVE` default: `2`
 - `ACTIVE_CONTAINER_CHECK_INTERVAL` default: `30`
+- `REDIS_HOST` default: `localhost`
+- `REDIS_PORT` default: `6379`
+- `REDIS_PASSWORD` default: empty
+- `REDIS_DB` default: `0`
+
+`WORKER_ADDRESS` is the address written to Redis and later used by Coderunner as the gRPC target.
 
 Update the environment file and restart the service when you need to change runtime settings.
 

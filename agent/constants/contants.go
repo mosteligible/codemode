@@ -12,4 +12,9 @@ const (
 
 	ProgrammingLanguagePython = "python"
 	ProgrammingLanguageBash   = "bash"
+
+	RedisAvailableWorkersKey   = "codemode:workers:available"
+	RedisWorkerCapacitiesKey   = "codemode:workers:capacity"
+	RedisWorkerCapacityPrefix  = "codemode:worker:capacity:"
+	RedisWorkerHeartbeatPrefix = "codemode:worker:heartbeat:"
 )

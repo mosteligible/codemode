@@ -36,17 +36,25 @@ func (c *Config) ReloadConfig() {
 
 func NewConfig() *Config {
 	godotenv.Load()
-	remoteHosts := os.Getenv("REMOTE_HOSTS")
+	remoteHosts := parseRemoteHosts(os.Getenv("REMOTE_HOSTS"))
 	redisDb, err := strconv.Atoi(os.Getenv("REDIS_DB"))
 	if err != nil {
 		redisDb = 0
 	}
+	redisHost := os.Getenv("REDIS_HOST")
+	if redisHost == "" {
+		redisHost = "localhost"
+	}
+	redisPort := os.Getenv("REDIS_PORT")
+	if redisPort == "" {
+		redisPort = "6379"
+	}
 
 	return &Config{
-		RemoteHosts:   strings.Split(remoteHosts, ";"),
+		RemoteHosts:   remoteHosts,
 		AppUserName:   os.Getenv("APP_USER_NAME"),
-		RedisHost:     os.Getenv("REDIS_HOST"),
-		RedisPort:     os.Getenv("REDIS_PORT"),
+		RedisHost:     redisHost,
+		RedisPort:     redisPort,
 		RedisUser:     os.Getenv("REDIS_USER"),
 		RedisPassword: os.Getenv("REDIS_PASSWORD"),
 		RedisDB:       redisDb,
@@ -59,4 +67,16 @@ func NewConfig() *Config {
 
 		lock: sync.Mutex{},
 	}
+}
+
+func parseRemoteHosts(raw string) []string {
+	parts := strings.Split(raw, ";")
+	hosts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		host := strings.TrimSpace(part)
+		if host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts
 }
