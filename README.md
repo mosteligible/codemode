@@ -10,9 +10,9 @@ The current execution path is:
 
 - `client`: optional FastAPI chat/orchestration service that runs an LLM agent and connects to MCP.
 - `pyrunner`: Python MCP server that exposes tools, including `execute_code`.
-- `coderunner`: Go control plane that accepts execution requests over HTTP and forwards them to workers over gRPC.
+- `coderunner`: Go control plane that accepts execution requests over HTTP, uses Redis for worker/session routing, and forwards work to agents over gRPC.
 - `agent`: Go worker service that manages sandbox containers and executes code remotely.
-- `redis`: token storage used by the proxy flow.
+- `redis`: worker registry, session routing store, and token storage used by the proxy flow.
 
 This document intentionally focuses on the remote execution backend path and does not describe every app in the repository.
 
@@ -23,7 +23,7 @@ This document intentionally focuses on the remote execution backend path and doe
 1. A user message reaches `client` through `/chat`.
 2. The LLM uses MCP tools exposed by `pyrunner`.
 3. When the model calls `execute_code`, `pyrunner` sends `POST /run` to `coderunner`.
-4. `coderunner` selects a remote `agent` connection from `REMOTE_HOSTS`.
+4. `coderunner` resolves the target worker from Redis, reusing the session's assigned worker when `sessionId` is present.
 5. `coderunner` forwards the request over gRPC using `ExecuteCode`.
 6. The `agent` validates the language, applies a timeout, and runs the instruction inside a managed container.
 7. Stdout, stderr, and exit status return back through `coderunner` to `pyrunner`, then to the MCP client.
@@ -31,15 +31,15 @@ This document intentionally focuses on the remote execution backend path and doe
 ### Runtime responsibilities
 
 - `pyrunner` is the MCP and tool gateway. It does not directly execute code locally in the current setup.
-- `coderunner` is a thin transport/control-plane layer. It receives `/run` requests and routes them to workers.
+- `coderunner` is the transport/control-plane layer. It receives `/run` requests and routes them to workers using Redis state.
 - `agent` is the execution tier. It starts and reuses containers, then runs commands with Docker exec.
 
 ## Current State
 
-- MCP execution is currently stateless from the Python path.
+- MCP execution is currently stateless from the Python path unless callers provide a `sessionId`.
 - The Go execution API supports `sessionId`, but `pyrunner` does not currently send one.
 - `agent` currently validates only `python` and `bash` for remote execution.
-- Worker selection in `coderunner` is random, not load-aware.
+- Worker selection in `coderunner` is Redis-backed and prefers workers with more available slots, then lower host load.
 
 ## Services And Ports
 
@@ -82,12 +82,16 @@ go run .
 Important environment variables:
 
 - `WORKER_PORT` default: `:30031`
+- `WORKER_HOST` default: `localhost`
+- `WORKER_ADDRESS` default: `WORKER_HOST + WORKER_PORT`
 - `DOCKER_IMAGE_NAME` default: `python:3.14-slim`
 - `MIN_ACTIVE` default: `2`
+- `REDIS_HOST` default: `localhost`
+- `REDIS_PORT` default: `6379`
 
 ### 3. Start `coderunner`
 
-Set `REMOTE_HOSTS` so it can reach one or more workers. The value is a semicolon-delimited list, for example:
+Coderunner discovers live workers from Redis. `REMOTE_HOSTS` is optional and can be used as a static fallback or to pre-create clients. The value is a semicolon-delimited list, for example:
 
 ```bash
 REMOTE_HOSTS=127.0.0.1:30031
@@ -167,6 +171,6 @@ make run-coderunner
 ## Notes
 
 - Start `pyrunner` only after `coderunner` is reachable.
-- Start `coderunner` only after at least one `agent` is reachable through `REMOTE_HOSTS`.
+- Start `coderunner` only after Redis is reachable. Start at least one `agent` so Redis contains a live worker heartbeat before sending `/run` requests.
 - This root README is intentionally scoped to the remote execution backend architecture.
 - Component-specific setup details also live in `pyrunner/README.md`, `coderunner/README.md`, and `agent/README.md`.
